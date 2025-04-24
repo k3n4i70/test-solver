@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Helper</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+        }
+        h1 {
+            color: #1877f2; /* Similar to Facebook blue */
+            margin-bottom: 25px;
+        }
+        #g_id_signin, #userInfo, #appContent, #signOutButton {
+            margin-top: 20px;
+        }
+        #userInfo img {
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 10px;
+            width: 40px;
+            height: 40px;
+        }
+         #userInfo span {
+            vertical-align: middle;
+            font-weight: bold;
+         }
+
+        input[type="file"] {
+            display: block;
+            margin: 20px auto 10px auto;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 300px;
+            margin-top: 15px;
+            border-radius: 5px;
+            border: 1px solid #eee;
+        }
+        button {
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-top: 15px;
+        }
+        button:hover {
+            background-color: #166fe5;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+         #signOutButton {
+             background-color: #e4e6eb;
+             color: #4b4f56;
+             font-weight: bold;
+         }
+         #signOutButton:hover {
+             background-color: #dcdfe3;
+         }
+        #loading {
+            margin-top: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        #results {
+            margin-top: 25px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            text-align: left;
+            white-space: pre-wrap; /* Preserve formatting */
+            word-wrap: break-word;
+        }
+        .error {
+            color: #d93025; /* Google red error color */
+            font-weight: bold;
+            margin-top: 15px;
+        }
+         .warning {
+             color: #ff9800; /* Orange warning color */
+             font-weight: bold;
+             margin-top: 15px;
+             font-size: 0.9em;
+             border: 1px solid #ff9800;
+             padding: 10px;
+             border-radius: 5px;
+             background-color: #fff3e0;
+         }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Helper</h1>
+        <div class="warning">
+            <strong>Security Warning:</strong> Do not share this file. Your API Key is embedded and could be misused if exposed. Use with caution.
+        </div>
+
+        <!-- Google Sign-In Button -->
+        <div id="g_id_signin"></div>
+
+        <!-- User Info Display (Initially Hidden) -->
+        <div id="userInfo" style="display: none;">
+            <img id="userPic" src="" alt="User Picture">
+            <span id="userName"></span>
+        </div>
+
+        <!-- App Content (Initially Hidden) -->
+        <div id="appContent" style="display: none;">
+            <p>Upload a picture of your test:</p>
+            <input type="file" id="imageInput" accept="image/*">
+            <img id="imagePreview" src="#" alt="Image Preview" style="display: none;">
+            <button id="submitButton" disabled>Get Answers</button>
+            <div id="loading" style="display: none;">Processing image... Please wait.</div>
+            <div id="results"></div>
+        </div>
+
+        <!-- Sign Out Button (Initially Hidden) -->
+        <button id="signOutButton" style="display: none;">Sign Out</button>
+
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID'; // <-- PASTE YOUR CLIENT ID HERE
+        const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY';   // <-- PASTE YOUR GEMINI API KEY HERE (INSECURE!)
+        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${GEMINI_API_KEY}`;
+        // --- End Configuration ---
+
+        // --- DOM Elements ---
+        const signInButton = document.getElementById('g_id_signin');
+        const userInfoDiv = document.getElementById('userInfo');
+        const userPic = document.getElementById('userPic');
+        const userName = document.getElementById('userName');
+        const appContentDiv = document.getElementById('appContent');
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const submitButton = document.getElementById('submitButton');
+        const loadingDiv = document.getElementById('loading');
+        const resultsDiv = document.getElementById('results');
+        const signOutButton = document.getElementById('signOutButton');
+        const warningDiv = document.querySelector('.warning');
+
+        let imageDataUrl = null; // To store the base64 image data
+        let currentGoogleUser = null; // To store user info
+
+        // --- Initialization ---
+        window.onload = () => {
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
+                displayError("Error: Gemini API Key is not set in the HTML file.", resultsDiv);
+                warningDiv.style.borderColor = '#d93025'; // Make warning red if key missing
+            }
+             if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID') {
+                displayError("Error: Google Client ID is not set in the HTML file.", resultsDiv);
+             }
+
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleCredentialResponse
+            });
+            google.accounts.id.renderButton(
+                signInButton,
+                { theme: "outline", size: "large" } // Customize button appearance
+            );
+            // Prompt for sign-in automatically on page load (optional)
+            // google.accounts.id.prompt();
+        };
+
+        // --- Google Sign-In Handling ---
+        function handleCredentialResponse(response) {
+            // Decode the JWT token to get user info (basic way, no server validation)
+            const base64Url = response.credential.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+
+            currentGoogleUser = JSON.parse(jsonPayload);
+            console.log("ID: " + currentGoogleUser.sub);
+            console.log('Full Name: ' + currentGoogleUser.name);
+            console.log('Given Name: ' + currentGoogleUser.given_name);
+            console.log('Family Name: ' + currentGoogleUser.family_name);
+            console.log("Image URL: " + currentGoogleUser.picture);
+            console.log("Email: " + currentGoogleUser.email);
+
+            // Update UI
+            userName.textContent = `Welcome, ${currentGoogleUser.given_name}!`;
+            userPic.src = currentGoogleUser.picture;
+            userInfoDiv.style.display = 'block';
+            signInButton.style.display = 'none';
+            appContentDiv.style.display = 'block';
+            signOutButton.style.display = 'inline-block'; // Show sign out button
+            resultsDiv.innerHTML = ''; // Clear previous results
+            warningDiv.style.display = 'none'; // Hide security warning after login if desired
+        }
+
+        // --- Sign Out ---
+        signOutButton.addEventListener('click', () => {
+            google.accounts.id.disableAutoSelect();
+            // Optionally revoke token (might require more setup)
+            // google.accounts.id.revoke(currentGoogleUser.email, done => {
+            //   console.log('consent revoked');
+            // });
+
+            currentGoogleUser = null;
+            imageDataUrl = null;
+
+            // Reset UI
+            userInfoDiv.style.display = 'none';
+            appContentDiv.style.display = 'none';
+            signOutButton.style.display = 'none';
+            signInButton.style.display = 'block'; // Or render it again if needed
+            imagePreview.style.display = 'none';
+            imageInput.value = ''; // Clear file input
+            resultsDiv.innerHTML = '';
+            submitButton.disabled = true;
+            warningDiv.style.display = 'block'; // Show warning again
+             // Re-render the button in case it was removed or state needs resetting
+             google.accounts.id.renderButton(
+                signInButton,
+                { theme: "outline", size: "large" }
+            );
+        });
+
+
+        // --- Image Handling ---
+        imageInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    imageDataUrl = e.target.result; // Store the base64 data URL
+                    submitButton.disabled = false; // Enable submit button
+                    resultsDiv.innerHTML = ''; // Clear previous results
+                }
+                reader.readAsDataURL(file); // Read file as Base64
+            } else {
+                imageDataUrl = null;
+                imagePreview.style.display = 'none';
+                submitButton.disabled = true;
+            }
+        });
+
+        // --- Submit to AI ---
+        submitButton.addEventListener('click', async () => {
+            if (!imageDataUrl) {
+                displayError("Please select an image first.", resultsDiv);
+                return;
+            }
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
+                 displayError("Error: Gemini API Key is not configured.", resultsDiv);
+                return;
+            }
+
+            loadingDiv.style.display = 'block';
+            resultsDiv.innerHTML = '';
+            submitButton.disabled = true; // Disable while processing
+
+            try {
+                // Extract base64 data and mime type from data URL
+                const parts = imageDataUrl.split(',');
+                const mimeType = parts[0].match(/:(.*?);/)[1];
+                const base64Data = parts[1];
+
+                const requestBody = {
+                    contents: [{
+                        parts: [
+                            { text: "Analyze this image, which contains parts of a test or quiz. Identify the questions and provide concise answers for each question found. If multiple questions are present, list them clearly. Aim for accuracy based *only* on the visual information. If a question cannot be answered from the image, state that." },
+                            {
+                                inline_data: {
+                                    mime_type: mimeType,
+                                    data: base64Data
+                                }
+                            }
+                        ]
+                    }],
+                    // Optional: Configure safety settings and generation parameters
+                     "generationConfig": {
+                         "temperature": 0.4, // Lower for more factual, less creative answers
+                         "topK": 32,
+                         "topP": 1,
+                         "maxOutputTokens": 4096, // Adjust as needed
+                         "stopSequences": []
+                     },
+                     "safetySettings": [ // Adjust safety levels if needed
+                       { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
+                       { "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
+                       { "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE" },
+                       { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE" }
+                     ]
+                };
+
+                const response = await fetch(GEMINI_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error("API Error Response:", errorData);
+                    throw new Error(`API Error: ${response.status} ${response.statusText}. ${errorData?.error?.message || ''}`);
+                }
+
+                const data = await response.json();
+
+                // Extract text from the response - structure might vary slightly
+                let answer = "No answer found.";
+                if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+                   answer = data.candidates[0].content.parts[0].text;
+                } else if (data.promptFeedback && data.promptFeedback.blockReason){
+                    answer = `Blocked: ${data.promptFeedback.blockReason}. ${data.promptFeedback.blockReasonMessage || ''}`;
+                    resultsDiv.classList.add('error'); // Style block messages as errors
+                } else {
+                     console.warn("Unexpected API response structure:", data);
+                     answer = "Received an unexpected response format from the AI.";
+                }
+
+
+                resultsDiv.textContent = answer;
+                resultsDiv.classList.remove('error'); // Ensure error class is removed on success
+
+
+            } catch (error) {
+                console.error("Error fetching or processing AI response:", error);
+                displayError(`An error occurred: ${error.message}`, resultsDiv);
+            } finally {
+                loadingDiv.style.display = 'none';
+                 // Re-enable button only if an image is still selected
+                 submitButton.disabled = !imageDataUrl;
+            }
+        });
+
+        // --- Helper Functions ---
+        function displayError(message, element) {
+            element.textContent = message;
+            element.classList.add('error'); // Add error class for styling
+        }
+
+    </script>
+</body>
+</html>
